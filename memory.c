@@ -1,25 +1,18 @@
-/**
- * @file memory.c
- * @author 智识之道 (binary@techbootcamp)
- * @brief 连续内存分配
- * @version 0.1
- * @date 2022-01-05
- *
- * @copyright Copyright (c) 2022
- *
- */
-
-///////////////////////////////////////////////////////////////////////////////
-//头文件区域
 #include <stdlib.h>
 #include <stdio.h>
-//有需要增加其他头文件在这里添加
+#include <string.h>
+
 
 ///////////////////////////////////////////////////////////////////////////////
 //宏定义区域
 
 #define MEMSIZE 80
-//有需要增加其他头宏定义在这里添加
+#define COMMAND_LEN 256
+#define FILE_NAME_LEN 20
+#define SPLIT_LINE_1 "--------------------------------------------------------------------------------"
+#define SPLIT_LINE_2 "****************************MemoryHeader****************************************"
+#define SPLIT_LINE_3 "       id                *             next             pack      size      used"
+#define SPLIT_LINE_4 "********************************************************************************"
 
 ///////////////////////////////////////////////////////////////////////////////
 //结构体区域
@@ -28,7 +21,7 @@
  * @brief 内存首部结构体
  *
  */
-typedef struct
+typedef struct header
 {
     //下一个
     void *next;
@@ -51,6 +44,15 @@ typedef struct
     //命令函数
     int (*command_func)();
 } command_info;
+
+typedef struct
+{
+    char *command_name;
+    char *process_name;
+    char *algo_name;
+    int size;
+    char *file_name;
+} command_content;
 
 ///////////////////////////////////////////////////////////////////////////////
 //函数声明区域
@@ -125,6 +127,8 @@ command_info commands[] = {
     {"E", &mem_exit}};
 
 //有需要增加其他变量在这里添加
+char mem_space[MEMSIZE];
+command_content read_command;
 
 ///////////////////////////////////////////////////////////////////////////////
 //函数区域
@@ -138,7 +142,22 @@ command_info commands[] = {
  */
 int mem_init()
 {
-    printf("TODO: mem_init");
+    first_header = (memory_header *)malloc(sizeof(memory_header));
+    if(first_header == NULL)
+    {
+        return -1;
+    }
+
+    first_header->pack = mem_space;
+    first_header->size = MEMSIZE;
+    first_header->next = NULL;
+    first_header->used = 0;
+
+    for(int i = 0; i < MEMSIZE; i++)
+    {
+        mem_space[i] = '.';
+    }
+
     return 0;
 }
 
@@ -151,7 +170,26 @@ int mem_init()
  */
 void *mem_alloc_for_first_fit(char name, int size)
 {
-    printf("TODO: mem_alloc_for_first_fit");
+    memory_header *cur_header = first_header;
+    char *new_pack;
+    while(cur_header != NULL)
+    {
+        if(cur_header->used == 0 && cur_header->size >= size)
+        {
+            new_pack = cur_header->pack;
+            char *allocated_mem = new_pack;
+            for(int i = 0; i < size; i++)
+            {
+                allocated_mem[i] = name;
+            }
+
+            return new_pack;
+        } else
+        {
+            cur_header = cur_header->next;
+        }
+    }
+
     return NULL;
 }
 
@@ -164,8 +202,48 @@ void *mem_alloc_for_first_fit(char name, int size)
  */
 void *mem_alloc_for_best_fit(char name, int size)
 {
-    printf("TODO: mem_alloc_for_best_fit");
-    return NULL;
+    memory_header *cur_header = first_header;
+    memory_header *best_header = NULL;
+    char *new_pack = NULL;
+
+    //先寻找第一个符合条件的洞
+    while(cur_header != NULL)
+    {
+        if(cur_header->used == 0 && cur_header->size >= size)
+        {
+            best_header = cur_header;
+            break;
+        }
+
+        cur_header = cur_header->next;
+    }
+
+    //再找出符合条件的最小的洞
+    cur_header = best_header;
+    if(best_header != NULL)
+    {
+        while(cur_header != NULL)
+        {
+            if(cur_header->used == 0 && cur_header->size >= size && cur_header->size < best_header->size)
+            {
+                best_header = cur_header;
+            }
+            cur_header = cur_header->next;
+        }
+        new_pack = best_header->pack;
+
+        char *allocated_mem = new_pack;
+        for(int i = 0; i < size; i++)
+        {
+            allocated_mem[i] = name;
+        }
+
+        return new_pack;
+    } else
+    {
+        return NULL;
+    }
+
 }
 
 /**
@@ -177,8 +255,47 @@ void *mem_alloc_for_best_fit(char name, int size)
  */
 void *mem_alloc_for_worst_fit(char name, int size)
 {
-    printf("TODO: mem_alloc_for_worst_fit");
-    return NULL;
+    memory_header *cur_header = first_header;
+    memory_header *best_header = NULL;
+    char *new_pack = NULL;
+
+    //先寻找第一个符合条件的洞
+    while(cur_header != NULL)
+    {
+        if(cur_header->used == 0 && cur_header->size >= size)
+        {
+            best_header = cur_header;
+            break;
+        }
+
+        cur_header = cur_header->next;
+    }
+
+    //再找出符合条件的最大的洞
+    cur_header = best_header;
+    if(best_header != NULL)
+    {
+        while(cur_header != NULL)
+        {
+            if(cur_header->used == 0 && cur_header->size >= size && cur_header->size > best_header->size)
+            {
+                best_header = cur_header;
+            }
+            cur_header = cur_header->next;
+        }
+        new_pack = best_header->pack;
+
+        char *allocated_mem = new_pack;
+        for(int i = 0; i < size; i++)
+        {
+            allocated_mem[i] = name;
+        }
+
+        return new_pack;
+    } else
+    {
+        return NULL;
+    }
 }
 
 /**
@@ -212,26 +329,198 @@ void *mem_alloc(char name, int size, char algo)
 
 int mem_dump()
 {
-    printf("TODO: mem_dump");
-    return 0;
+    memory_header *cur_header = first_header;
+    int id = 1;
+    printf("%s\n", SPLIT_LINE_1);
+    printf("%s\n", SPLIT_LINE_2);
+    printf("%s\n", SPLIT_LINE_3);
+    while(cur_header != NULL)
+    {
+        printf("%9d%17p%17p%17p%10d%10d\n", id, cur_header, cur_header->next, cur_header->pack, cur_header->size, cur_header->used);
+        id++;
+        cur_header = cur_header->next;
+    }
+    printf("%s\n", SPLIT_LINE_4);
+
+    return 1;
 }
 
 int mem_allocate()
 {
-    printf("TODO: mem_allocate");
-    return 0;
+    char *new_pack;
+    memory_header *cur_header = first_header;
+    memory_header *prev_header;
+
+    char name = read_command.process_name[0];
+    char algo = read_command.algo_name[0];
+    int size = read_command.size;
+    new_pack = mem_alloc(name, size, algo);
+    if(new_pack != NULL)
+    {
+        //找到分配的洞的header
+        while(cur_header != NULL && cur_header->pack != new_pack)
+        {
+            prev_header = cur_header;
+            cur_header = cur_header->next;
+        }
+
+        //如果新分配内存大小等于对应的洞的大小，则直接修改对应header
+        if(cur_header->size == size)
+        {
+            cur_header->used = 1;
+        } else
+        {
+            //如果新分配的内存大小是小于洞的大小的，则插入新的header，对应的洞的大小减去新分配的大小，修改数据开始地址
+            memory_header *new_header = (memory_header *)malloc(sizeof(memory_header));
+            new_header->size = size;
+            new_header->pack = new_pack;
+            new_header->used = 1;
+
+            cur_header->pack += size;
+            cur_header->size -= size;
+
+            if(cur_header == first_header)
+            {
+                new_header->next = first_header;
+                first_header = new_header;
+            } else
+            {
+                new_header->next = cur_header;
+                prev_header->next = new_header;
+            }
+
+        }
+    } else
+    {
+        printf("Failed to allocate memory.\n");
+    }
+
+    return 1;
+}
+
+/**
+ * @brief 释放内存后更新memory header链表的内容
+ *
+ */
+void mem_header_update(char *pack)
+{
+    memory_header *cur_header = first_header;
+    memory_header *prev_header = NULL;
+    memory_header *tmp_header;
+    
+    while(cur_header->pack != pack)
+    {
+        prev_header = cur_header;
+        cur_header = cur_header->next;
+    }
+
+    //如果是第一个，如果后边是正在用的，或下一个是NULL，则直接改used=0;否则更改当前size和used，将后边的header删掉
+    if(cur_header == first_header)
+    {
+        if(cur_header->next != NULL)
+        {
+            if(((memory_header *)cur_header->next)->used == 0)
+            {
+                cur_header->used = 0;
+                cur_header->size += ((memory_header *)cur_header->next)->size;
+                tmp_header = cur_header->next;
+                cur_header->next = ((memory_header *)cur_header->next)->next;
+                free(tmp_header);
+            } else
+            {
+                cur_header->used = 0;
+            }
+        } else
+        {
+            cur_header->used = 0;
+        }
+    } else if(cur_header->next == NULL)
+    {
+        //如果是最后一个，如果前边是正在用的，或前一个是NULL，则直接改used=0；否则更改前一个的size，并删掉当前header
+        if(prev_header != NULL)
+        {
+            if(prev_header->used == 0)
+            {
+                prev_header->size += cur_header->size;
+                prev_header->next = cur_header->next;
+                free(cur_header);
+            } else
+            {
+                cur_header->used = 0;
+            }
+        } else
+        {
+            cur_header->used = 0;
+        }
+    }else
+    {
+        //否则（既不是第一个也不是最后一个的情况下）
+        //如果前一个是空的，后一个不是，则修改前一个的size，删掉当前header
+        //如果前一个是在用的，后一个是空的，则修改当前的size和used，删掉下一个header
+        //如果前后都是在用的，则直接修改used=0；
+        if(prev_header->used == 0)
+        {
+            if(((memory_header *)cur_header->next)->used == 0)
+            {
+                prev_header->size += (cur_header->size + ((memory_header *)cur_header->next)->size);
+                prev_header->next = ((memory_header *)cur_header->next)->next;
+                free(cur_header->next);
+                free(cur_header);
+            } else
+            {
+                prev_header->size += cur_header->size;
+                prev_header->next = cur_header->next;
+                free(cur_header);
+            }
+        } else if(((memory_header *)cur_header->next)->used == 0)
+        {
+            cur_header->used = 0;
+            cur_header->size += ((memory_header *)cur_header->next)->size;
+            tmp_header = cur_header->next;
+            cur_header = ((memory_header *)cur_header->next)->next;
+            free(tmp_header);
+        } else
+        {
+            cur_header->used = 0;
+        }
+    }
 }
 
 int mem_free()
 {
-    printf("TODO: mem_free");
-    return 0;
+    //将对应内存修改为'.'
+    int first_mem_flag = 1; //是否是要释放的内存的首地址
+    char *free_pack;
+    char process_name = read_command.process_name[0];
+    for(int i = 0; i < MEMSIZE; i++)
+    {
+        if(mem_space[i] == process_name)
+        {
+            mem_space[i] = '.';
+            if(first_mem_flag)
+            {
+                free_pack = &mem_space[i];
+                mem_header_update(free_pack);
+                first_mem_flag = 0;
+            }
+        } else
+        {
+            first_mem_flag = 1;
+        }
+    }
+
+    return 1;
 }
 
 int mem_show()
 {
-    printf("TODO: mem_show");
-    return 0;
+    for(int i = 0; i < MEMSIZE; i++)
+    {
+        printf("%c", mem_space[i]);
+    }
+    printf("\n");
+
+    return 1;
 }
 
 int mem_read()
@@ -248,7 +537,15 @@ int mem_compact()
 
 int mem_exit()
 {
-    printf("TODO: mem_exit");
+    memory_header *cur_header = first_header;
+    memory_header *tmp_header;
+    while(cur_header != NULL)
+    {
+        tmp_header = cur_header->next;
+        free(cur_header);
+        cur_header = tmp_header;
+    }
+
     return 0;
 }
 
@@ -271,7 +568,7 @@ int cmd_num()
  */
 void show_mem()
 {
-    printf("TODO: show_mem");
+    printf("mem>");
 }
 
 /**
@@ -280,19 +577,78 @@ void show_mem()
  */
 void show_usage()
 {
-    printf("TODO: show_usage");
+    printf("Usage:\n");
+    printf("D\nA <name> <size> <algo>\nF <name>\nS\nR <file>\nC\nE\n");
+    printf("Type program names and arguments, and hit enter.\n");
 }
 
 /**
- * @brief 解析命令
+ * @brief 解析命令，命令正确返回1，不正确返回0
  *
  * @param fp
  * @return int
  */
 int parse_cmd(FILE *fp)
 {
-    printf("TODO: parse_cmd");
-    return 0;
+    char *str_tok;
+    char read_line[COMMAND_LEN];
+
+    read_command.command_name = (char *)calloc(2, sizeof(char));
+    read_command.process_name = (char *)calloc(2, sizeof(char));
+    read_command.algo_name = (char *)calloc(2, sizeof(char));
+    read_command.file_name = (char *)calloc(FILE_NAME_LEN, sizeof(char));
+
+    fgets(read_line, COMMAND_LEN, fp);
+    str_tok = strtok(read_line, " \n");
+    switch(str_tok[0])
+    {
+        case 'D':
+            strcpy(read_command.command_name, "D");
+            break;
+        case 'A':
+            strcpy(read_command.command_name, "A");
+
+            str_tok = strtok(NULL, " \n");
+            strcpy(read_command.process_name, str_tok);
+
+            str_tok = strtok(NULL, " \n");
+            read_command.size = atoi(str_tok);
+
+            str_tok = strtok(NULL, " \n");
+            strcpy(read_command.algo_name, str_tok);
+
+            break;
+        case 'F':
+            strcpy(read_command.command_name, "F");
+
+            str_tok = strtok(NULL, " \n");
+            strcpy(read_command.process_name, str_tok);
+
+            break;
+        case 'S':
+            strcpy(read_command.command_name, "S");
+
+            break;
+        case 'R':
+            strcpy(read_command.command_name, "R");
+
+            str_tok = strtok(NULL, " \n");
+            strcpy(read_command.file_name, str_tok);
+
+            break;
+        case 'C':
+            strcpy(read_command.command_name, "C");
+
+            break;
+        case 'E':
+            strcpy(read_command.command_name, "E");
+
+            break;
+        default:
+            return 0;
+    }
+
+    return 1;
 }
 
 /**
@@ -302,7 +658,14 @@ int parse_cmd(FILE *fp)
  */
 int select_cmd()
 {
-    printf("TODO: select_cmd");
+    for(int i = 0; i < 7; i++)
+    {
+        if(!strcmp(commands[i].command, read_command.command_name))
+        {
+            return i;
+        }
+    }
+
     return -1;
 }
 
@@ -312,7 +675,10 @@ int select_cmd()
  */
 void reset()
 {
-    printf("TODO: reset");
+    free(read_command.command_name);
+    free(read_command.process_name);
+    free(read_command.algo_name);
+    free(read_command.file_name);
 }
 
 /**
