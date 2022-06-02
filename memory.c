@@ -107,7 +107,37 @@ int mem_compact();
 int mem_exit();
 
 //有需要增加其他函数声明在这里添加
+/**
+ * @brief 紧凑内存时将未使用的内存空间移动到后面
+ *
+ */
+void mem_move(char *empty_ptr, char *full_ptr);
 
+/**
+ * @brief 紧凑内存时更改表头链表，将未使用的内存放到后面
+ *
+ */
+memory_header *mem_compact_header_update(memory_header *empty_header, memory_header *prev_header, int size);
+
+/**
+ * @brief 找到header链表中末尾元素
+ *
+ */
+memory_header *find_the_last_header();
+
+/**
+ * @brief 将未使用的内存整合成一个洞
+ *
+ */
+void combine_empty_mem();
+
+int parse_cmd(FILE *fp);
+
+int select_cmd();
+
+void reset();
+
+void handler();
 ///////////////////////////////////////////////////////////////////////////////
 //变量区域
 
@@ -402,7 +432,7 @@ int mem_allocate()
  * @brief 释放内存后更新memory header链表的内容
  *
  */
-void mem_header_update(char *pack)
+void mem_free_header_update(char *pack)
 {
     memory_header *cur_header = first_header;
     memory_header *prev_header = NULL;
@@ -500,7 +530,7 @@ int mem_free()
             if(first_mem_flag)
             {
                 free_pack = &mem_space[i];
-                mem_header_update(free_pack);
+                mem_free_header_update(free_pack);
                 first_mem_flag = 0;
             }
         } else
@@ -525,14 +555,135 @@ int mem_show()
 
 int mem_read()
 {
-    printf("TODO: mem_read");
-    return 0;
+    //打开文件
+    FILE *fp_in;
+    if((fp_in = fopen(read_command.file_name, "r")) == NULL)
+    {
+        fprintf(stderr, "Failed to open %s.\n", read_command.file_name);
+    }
+
+    while(parse_cmd(fp_in))
+    {
+        handler();
+    }
+
+    return should_run;    
+}
+
+void mem_move(char *empty_ptr, char *full_ptr)
+{
+    while(full_ptr  < (mem_space + MEMSIZE))
+    {
+        *empty_ptr = *full_ptr;
+        ++empty_ptr;
+        ++full_ptr;
+    }
+
+    while(empty_ptr < (mem_space + MEMSIZE))
+    {
+        *empty_ptr = '.';
+        ++empty_ptr;
+    }
+}
+
+memory_header *mem_compact_header_update(memory_header *empty_header, memory_header *prev_header, int size)
+{
+    memory_header *next_header = empty_header->next;
+    memory_header *last_header;
+    memory_header *tmp_header;
+    
+    //若空的洞是第一个表头，则下一个表头改为第一个，当前表头变为最后一个
+    if(empty_header == first_header)
+    {
+        first_header = empty_header->next;
+        empty_header->next = NULL;
+        last_header = find_the_last_header();
+        last_header->next = empty_header;
+        tmp_header = first_header;
+    } else
+    {
+        //若空的洞不是第一个表头，则前一个表头指向当前的表头的下一个，当前表头改为最后一个
+        prev_header->next = empty_header->next;
+        empty_header->next = NULL;
+        last_header = find_the_last_header();
+        last_header->next = empty_header;
+        tmp_header = prev_header->next;
+    }
+
+    //更新数据开始位置
+    while(tmp_header->next != NULL)
+    {
+        tmp_header->pack -= size;
+        tmp_header = tmp_header->next;
+    }
+    tmp_header->pack = &mem_space[MEMSIZE - size];
+
+    combine_empty_mem();
+
+    return next_header;
+}
+
+memory_header *find_the_last_header()
+{
+    memory_header *cur_header = first_header;
+    memory_header *prev_header = NULL;
+
+    while(cur_header != NULL)
+    {
+        prev_header = cur_header;
+        cur_header = cur_header->next;
+    }
+
+    return prev_header;
+}
+
+void combine_empty_mem()
+{
+    memory_header *cur_header = first_header;
+    memory_header *tmp_header;
+
+    while(cur_header->next != NULL)
+    {
+        if(cur_header->used == 0 && ((memory_header *)(cur_header->next))->used ==0)
+        {
+            cur_header->size += ((memory_header *)(cur_header->next))->size;
+            tmp_header = cur_header->next;
+            cur_header->next = ((memory_header *)(cur_header->next))->next;
+            free(tmp_header);
+        }
+
+        if(cur_header->next != NULL)
+        {
+            cur_header = cur_header->next;
+        }
+    }
 }
 
 int mem_compact()
 {
-    printf("TODO: mem_compact");
-    return 0;
+    char *empty_ptr;
+    char *full_ptr;
+    memory_header *cur_header = first_header;
+    memory_header *prev_header = NULL;
+    int size;
+    //根据表头链表找到未使用的洞，且不是最后一个表头
+    while(cur_header->next != NULL)
+    {
+        if(cur_header->used == 0)
+        {
+            empty_ptr = cur_header->pack;
+            size = cur_header->size;
+            full_ptr = ((memory_header *)(cur_header->next))->pack;
+            mem_move(empty_ptr, full_ptr);
+            cur_header = (memory_header *)mem_compact_header_update(cur_header, prev_header, size);
+        }else
+        {
+            prev_header = cur_header;
+            cur_header = cur_header->next;
+        }
+    }
+
+    return 1;
 }
 
 int mem_exit()
@@ -598,7 +749,10 @@ int parse_cmd(FILE *fp)
     read_command.algo_name = (char *)calloc(2, sizeof(char));
     read_command.file_name = (char *)calloc(FILE_NAME_LEN, sizeof(char));
 
-    fgets(read_line, COMMAND_LEN, fp);
+    if(fgets(read_line, COMMAND_LEN, fp) == NULL)
+    {
+        return 0;
+    }
     str_tok = strtok(read_line, " \n");
     switch(str_tok[0])
     {
